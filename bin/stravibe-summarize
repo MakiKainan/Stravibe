@@ -1,0 +1,77 @@
+#!/usr/bin/env node
+// Summarizer: joins the hook log with git and the transcript, prints the text card.
+// Usage: stravibe-summarize <session_id> [last]
+const fs = require('fs');
+
+const MIN = 60e3;
+const AUTO_PAUSE_MS = 5 * MIN;
+const INTERRUPT_CAP_MS = 5 * MIN;
+const END_EVENTS = new Set(['Stop', 'StopFailure', 'SessionEnd']);
+const RATE_LIMIT = /rate.?limit/i;
+
+const ms = (e) => Date.parse(e.t);
+const isPrompt = (e) => e.ev === 'UserPromptSubmit';
+const isTyped = (e) => isPrompt(e) && !e.own && !e.self;
+
+function loadEvents(file) {
+  let text;
+  try { text = fs.readFileSync(file, 'utf8'); } catch { return []; }
+  const out = [];
+  for (const line of text.split('\n')) {
+    try { const e = JSON.parse(line); if (e?.sid && e.t) out.push(e); } catch {}
+  }
+  return out;
+}
+
+function pickSession(events, sid, last) {
+  const lastSeen = new Map();
+  for (const e of events) if (isTyped(e)) lastSeen.set(e.sid, Math.max(lastSeen.get(e.sid) ?? 0, ms(e)));
+  if (!last && lastSeen.has(sid)) return sid;
+  const others = [...lastSeen].filter(([s]) => s !== sid).sort((a, b) => b[1] - a[1]);
+  return others[0]?.[0] ?? null;
+}
+
+function dropOwnTurns(evs) {
+  const kept = [];
+  let inOwn = false;
+  for (const e of evs) {
+    if (isPrompt(e)) inOwn = !!e.own;
+    if (inOwn) { if (END_EVENTS.has(e.ev)) inOwn = false; continue; }
+    kept.push(e);
+  }
+  return kept;
+}
+
+function timing(events, sid) {
+  const evs = dropOwnTurns(events.filter((e) => e.sid === sid).sort((a, b) => ms(a) - ms(b)));
+  let open = null, lastEnd = null, movingMs = 0, typed = 0, rageHits = 0, walls = 0, startModel = null;
+  const cwds = new Set(), tps = new Set();
+  for (const e of evs) {
+    const t = ms(e);
+    if (e.cwd) cwds.add(e.cwd);
+    if (e.tp) tps.add(e.tp);
+    if (isPrompt(e)) {
+      const interrupted = open !== null;
+      // ponytail: interrupted turns capped at 5 min; use transcript timestamps if moving time reads low
+      if (interrupted) movingMs += Math.min(t - open, INTERRUPT_CAP_MS);
+      else if (lastEnd !== null && t - lastEnd <= AUTO_PAUSE_MS) movingMs += t - lastEnd;
+      open = t;
+      lastEnd = null;
+      if (isTyped(e)) {
+        typed++;
+        if (e.corr || e.caps || interrupted) rageHits++;
+      }
+    } else if (END_EVENTS.has(e.ev) && open !== null) {
+      movingMs += t - open;
+      open = null;
+      lastEnd = t;
+    }
+    if (e.ev === 'StopFailure' && RATE_LIMIT.test(e.reason ?? '')) walls++;
+    if (e.ev === 'PostCompact' && e.trigger === 'auto') walls++;
+    if (e.ev === 'SessionStart' && e.model && !startModel) startModel = e.model;
+  }
+  const startMs = ms(evs[0]), endMs = ms(evs[evs.length - 1]);
+  return { startMs, endMs, movingMs, elapsedMs: endMs - startMs, typed, rageHits, walls, cwds: [...cwds], tps: [...tps], startModel };
+}
+
+module.exports = { loadEvents, pickSession, timing };
