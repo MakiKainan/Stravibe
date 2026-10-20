@@ -121,6 +121,20 @@ Throwaway: point every hook at a raw logger that saves stdin to a scratch file, 
 7. In the skill: `${CLAUDE_SESSION_ID}` substitution works, `bin/` is on PATH, `CLAUDE_PLUGIN_DATA` is set in both the hook env and the skill's shell.
 8. `git log -w --numstat` with author-date filtering counts one test session's commits correctly.
 
+### Phase 0 findings (Claude Code 2.1.304, 2026-10-20)
+
+Observed with a raw logger over headless (`claude -p`) sessions. Items marked *unverified* get checked in the Task 6 interactive end-to-end session.
+
+1. `--plugin-dir` loads the plugin; skill shows as `/stravibe:activity`. ✔
+2. All payloads carry `session_id`, `transcript_path`, `cwd`, `hook_event_name`; `UserPromptSubmit` has `prompt`; `SessionStart` has `source` (`startup`/`resume`/`compact`/`clear`) and only sometimes `model` (seen on `source: compact`, not on `startup`). `PostCompact` has `trigger` (`manual`/`auto`) and a `compact_summary` that must never be stored. `StopFailure` was not triggered (*unverified*): the recorder stores `error ?? reason` as `reason`, and a wall counts when it matches `/rate.?limit/i`.
+3. Self-started turns arrive as `UserPromptSubmit` whose prompt starts with a hyphenated tag such as `<task-notification>`. Rule: `self = /^\s*<[a-z]+(-[a-z]+)+>/.test(prompt)`.
+4. `--resume` keeps the same `session_id`. `/clear` → new `session_id` is *unverified* (expected from `source: clear`).
+5. Invoking the skill fires `UserPromptSubmit` with the literal text, e.g. `/stravibe:activity last`. Rule: `own = /^\s*\/stravibe:activity\b/.test(prompt)`.
+6. Transcript lines with `type: "assistant"` carry `message.id`, `message.model`, `message.usage.{input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens}`. The same `message.id` repeats on several lines with identical usage. Subagent transcripts (including compaction's) live at `<transcript_path minus .jsonl>/subagents/agent-*.jsonl` and are added to calories.
+7. `${CLAUDE_SESSION_ID}` and `${CLAUDE_PLUGIN_DATA}` are substituted in SKILL.md; `bin/` is on PATH. `CLAUDE_PLUGIN_DATA` is set in the hook env but **not** in the skill's shell, so the skill passes it: `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" stravibe-summarize ${CLAUDE_SESSION_ID} $ARGUMENTS`.
+8. `git log --no-merges -w --no-renames --numstat --format=%x00%H%x09%at%x09%ae` emits `\0hash\tauthor-epoch\temail`, a blank line, then `added\tremoved\tpath` rows. Spike repo: 1 counted commit (+10/−0); lockfile-only commit and pre-session commit correctly excluded. ✔
+9. Interrupt behaviour (no `Stop` on Esc) is *unverified*.
+
 ## Testing
 
 `node --test`. Fixtures: hand-written `events.jsonl` covering turns, auto-pause, interrupts, `own`/`self` prompts and walls; a small transcript fixture with duplicated usage lines; a temp git repo built in the test with commits inside and outside the window, a lockfile-only commit, a <5-line commit and another author. Recorder test: pipe payloads in, assert one line appended, empty stdout, exit 0 even on garbage stdin. Classifier test: keyword and caps cases.
