@@ -73,3 +73,18 @@ test('main prints a card for a session outside any repo with no transcript', () 
   assert.match(r.stdout, /Calories\s+—/);
   assert.match(r.stdout, /0:03:00/);
 });
+
+test('main counts commits made after the last turn when showing the current session', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sv-'));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'sv-repo-'));
+  const git = (args, env = {}) => spawnSync('git', args, { cwd: repo, env: { ...process.env, ...env } });
+  git(['init', '-q']); git(['config', 'user.email', 'me@x']); git(['config', 'user.name', 'me']);
+  const now = Date.now();
+  const e = (agoMin, ev, extra = {}) => JSON.stringify({ t: new Date(now - agoMin * MIN).toISOString(), ev, sid: 's1', cwd: repo, tp: '/nope.jsonl', ...extra });
+  fs.writeFileSync(path.join(dir, 'events.jsonl'), [e(20, 'UserPromptSubmit', { own: false, self: false }), e(15, 'Stop')].join('\n') + '\n');
+  fs.writeFileSync(path.join(repo, 'a.js'), 'x\n'.repeat(10));
+  git(['add', '-A']);
+  const date = new Date(now - 5 * MIN).toISOString(); // user commits by hand after Claude's last Stop
+  git(['commit', '-qm', 'c'], { GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date });
+  assert.match(cli(['s1'], dir).stdout, /^ {3}1 +Warm-up/m);
+});

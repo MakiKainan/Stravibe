@@ -11,7 +11,7 @@ const CORRECTIONS = [
 ];
 const CAPS_MIN_LETTERS = 10;
 const CAPS_MIN_SHARE = 0.6;
-const OWN = /^\s*\/stravibe:activity\b/;
+const OWN = /^\s*\/(stravibe:)?activity\b/;
 const SELF = /^\s*<[a-z]+(-[a-z]+)+>/; // e.g. <task-notification>
 
 function classify(prompt) {

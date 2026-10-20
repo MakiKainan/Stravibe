@@ -44,6 +44,19 @@ test('counts only qualifying commits in the window', () => {
   assert.deepEqual(countCommits([repo, path.join(repo, 'src')], START, END), { commits: 2, added: 16, removed: 0 });
 });
 
+test('counts commits on other local branches', () => {
+  const repo = makeRepo();
+  const git = (...a) => execFileSync('git', a, { cwd: repo, stdio: 'pipe' });
+  const main = git('rev-parse', '--abbrev-ref', 'HEAD').toString().trim();
+  git('checkout', '-qb', 'feat');
+  fs.writeFileSync(path.join(repo, 'feat.js'), lines(7));
+  git('add', '-A');
+  const date = new Date(START + 30 * 60e3).toISOString();
+  execFileSync('git', ['commit', '-qm', 'f'], { cwd: repo, env: { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } });
+  git('checkout', '-q', main);
+  assert.deepEqual(countCommits([repo], START, END), { commits: 3, added: 23, removed: 0 });
+});
+
 test('non-repo and deleted cwd give zero, no throw', () => {
   const zero = { commits: 0, added: 0, removed: 0 };
   assert.deepEqual(countCommits([path.join(os.tmpdir(), 'definitely-missing-sv')], 0, Date.now()), zero);

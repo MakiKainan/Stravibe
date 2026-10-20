@@ -105,7 +105,7 @@ function countCommits(cwds, startMs, endMs) {
     try {
       email = git(repo, ['config', 'user.email']).trim().toLowerCase();
       // committer date >= author date, so --since only trims the walk
-      out = git(repo, ['log', '--no-merges', '-w', '-M', '--numstat', `--since=${new Date(startMs).toISOString()}`, '--format=%x00%H%x09%at%x09%ae']);
+      out = git(repo, ['log', '--branches', '--no-merges', '-w', '-M', '--numstat', `--since=${new Date(startMs).toISOString()}`, '--format=%x00%H%x09%at%x09%ae']);
     } catch { continue; }
     if (!email) continue;
     for (const chunk of out.split('\0').slice(1)) {
@@ -171,9 +171,10 @@ function main([sid, mode]) {
   const picked = pickSession(events, sid, mode === 'last');
   if (!picked) return console.log('No activity recorded yet.');
   const t = timing(events, picked);
+  // the current session's window stays open: commits made by hand after Claude's last turn still count
   const tr = readTranscripts(withSubagents(t.tps));
   const top = tr && Object.entries(tr.models).sort((a, b) => b[1] - a[1])[0];
-  process.stdout.write(render({ ...t, ...countCommits(t.cwds, t.startMs, t.endMs), tokens: tr?.tokens ?? null, gear: top?.[0] ?? t.startModel }));
+  process.stdout.write(render({ ...t, ...countCommits(t.cwds, t.startMs, picked === sid ? Date.now() : t.endMs), tokens: tr?.tokens ?? null, gear: top?.[0] ?? t.startModel }));
 }
 
 module.exports = { loadEvents, pickSession, timing, countCommits, render };

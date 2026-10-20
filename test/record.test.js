@@ -26,6 +26,8 @@ test('classify own and len', () => {
   assert.equal(classify('/stravibe:activity last').own, true);
   assert.equal(classify('/stravibe:activity').own, true);
   assert.equal(classify('run /stravibe:activity').own, false);
+  assert.equal(classify('/activity last').own, true); // unprefixed plugin skill
+  assert.equal(classify('/activityx').own, false);
   assert.equal(classify('hello').len, 5);
 });
 
