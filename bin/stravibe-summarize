@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Summarizer: joins the hook log with git and the transcript, prints the text card.
-// Usage: stravibe-summarize <session_id> [last]
+// Usage: stravibe-summarize [<session_id> [last]] [--plain]   (NO_COLOR also disables color)
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { execFileSync } = require('child_process');
 const { readTranscripts, withSubagents } = require('../lib/transcript');
 
@@ -21,7 +22,6 @@ const EXCLUDED_PATHS = [
 const WARMUP_MIN_MOVING_MS = 10 * MIN;
 const ZONE_CUTOFFS = [2000, 5000, 10000, 20000]; // tokens per moving minute; guesses
 const RAGE_LEVELS = [[0.1, 'Chill'], [0.25, 'Warm'], [0.5, 'Spicy'], [Infinity, 'Meltdown']];
-const RULE = '─'.repeat(42);
 
 const ms = (e) => Date.parse(e.t);
 const isPrompt = (e) => e.ev === 'UserPromptSubmit';
@@ -135,47 +135,92 @@ const pad2 = (n) => String(n).padStart(2, '0');
 const hms = (t) => { const s = Math.round(t / 1000); return `${Math.floor(s / 3600)}:${pad2(Math.floor(s / 60) % 60)}:${pad2(s % 60)}`; };
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const TITLES = [[5, 'Late-Night Grind'], [12, 'Morning Vibe'], [17, 'Afternoon Session'], [22, 'Evening Flow'], [24, 'Late-Night Grind']];
 
-function render(s) {
+const ORANGE = '\x1b[38;2;217;119;87m', GRAY = '\x1b[38;2;140;140;140m', BOLD = '\x1b[1m', RESET = '\x1b[0m';
+
+const GLYPHS = {
+  '0': ['█▀█', '█ █', '▀▀▀'], '1': ['▄█ ', ' █ ', '▀▀▀'], '2': ['▀▀█', '█▀▀', '▀▀▀'], '3': ['▀▀█', ' ▀█', '▀▀▀'],
+  '4': ['█ █', '▀▀█', '  ▀'], '5': ['█▀▀', '▀▀█', '▀▀▀'], '6': ['█▀▀', '█▀█', '▀▀▀'], '7': ['▀▀█', '  █', '  ▀'],
+  '8': ['█▀█', '█▀█', '▀▀▀'], '9': ['█▀█', '▀▀█', '▀▀▀'], ':': [' ', '▀', '▀'], '-': ['   ', '▀▀▀', '   '],
+};
+const big = (str) => [0, 1, 2].map((r) => [...str].map((c) => GLYPHS[c][r]).join(' '));
+const meter = (n, of) => '▰'.repeat(n) + '▱'.repeat(of - n);
+
+function render(s, { color = false } = {}) {
+  const paint = (code, text) => (color ? code + text + RESET : text);
   const d = new Date(s.startMs);
   const movingMin = s.movingMs / MIN;
-  let pace = 'Warm-up';
-  if (s.commits > 0 && s.movingMs >= WARMUP_MIN_MOVING_MS) {
+  const warmup = !(s.commits > 0 && s.movingMs >= WARMUP_MIN_MOVING_MS);
+  let pace = '--:--';
+  if (!warmup) {
     const sec = Math.round(s.movingMs / s.commits / 1000);
-    pace = `${Math.floor(sec / 60)}:${pad2(sec % 60)} /commit`;
+    pace = `${Math.floor(sec / 60)}:${pad2(sec % 60)}`;
   }
   const calories = s.tokens == null ? '—' : s.tokens < 1000 ? `${s.tokens} tokens` : `${Math.round(s.tokens / 1000)}k tokens`;
-  const zone = s.tokens == null || !movingMin ? '—' : `Z${1 + ZONE_CUTOFFS.filter((c) => s.tokens / movingMin >= c).length}`;
+  const zoneN = 1 + ZONE_CUTOFFS.filter((c) => s.tokens / movingMin >= c).length;
+  const zone = s.tokens == null || !movingMin ? '—' : `${paint(ORANGE, meter(zoneN, 5))} Z${zoneN}`;
   const cadence = movingMin ? `${(s.typed / movingMin).toFixed(1)} /min` : '—';
   const share = s.typed ? s.rageHits / s.typed : 0;
-  const rage = RAGE_LEVELS.find(([max]) => share < max)[1];
-  const row = (l1, v1, l2, v2) => `${l1.padEnd(12)}${String(v1).padEnd(15)}${l2.padEnd(10)}${v2}`;
+  const rageN = RAGE_LEVELS.findIndex(([max]) => share < max);
+  const rage = `${paint(ORANGE, meter(rageN + 1, 4))} ${RAGE_LEVELS[rageN][1].toUpperCase()}`;
+  const gear = (s.gear ?? '—').replace(/^claude-/, '');
+
+  const bar = paint(ORANGE, '┃');
+  const line = (text = '') => `  ${bar}  ${text}`.trimEnd();
+  const label = (t, w) => paint(GRAY, t.padEnd(w));
+  // pad by visible width: values may contain color codes
+  const cell = (t, w) => t + ' '.repeat(Math.max(1, w - t.replace(/\x1b\[[0-9;]*m/g, '').length));
+  const paceRows = big(pace), commitRows = big(String(s.commits));
+  const heroW = Math.max(22, paceRows[0].length + 3);
   return [
-    `STRAVIBE · ${DAYS[d.getDay()]} ${MONTHS[d.getMonth()]} ${d.getDate()}, ${pad2(d.getHours())}:${pad2(d.getMinutes())}`,
-    RULE,
-    `   ${String(s.commits).padEnd(13)}${pace.padEnd(18)}${hms(s.movingMs)}`,
-    `   ${'commits'.padEnd(13)}${'pace'.padEnd(18)}moving`,
     '',
-    row('Elevation', `+${s.added} / −${s.removed}`, 'Elapsed', hms(s.elapsedMs)),
-    row('Calories', calories, 'Cadence', cadence),
-    row('HR zone', zone, 'Rage', rage),
-    row('Walls hit', s.walls, 'Gear', s.gear ?? '—'),
-    RULE,
-    'stravibe',
+    line(`${paint(ORANGE + BOLD, 'S T R A V I B E')}                  ${DAYS[d.getDay()]} ${MONTHS[d.getMonth()]} ${d.getDate()} · ${pad2(d.getHours())}:${pad2(d.getMinutes())}`),
+    line(paint(BOLD, TITLES.find(([h]) => d.getHours() < h)[1])),
+    line(),
+    ...paceRows.map((r, i) => line(paint(ORANGE, r.padEnd(heroW) + commitRows[i]))),
+    line(label(warmup ? 'WARM-UP' : 'PACE /commit', heroW) + paint(GRAY, 'COMMITS')),
+    line(),
+    line(`${hms(s.movingMs)} moving   ·   ${hms(s.elapsedMs)} elapsed   ·   +${s.added} −${s.removed}`),
+    line(paint(GRAY, '─'.repeat(50))),
+    line(label('CALORIES', 11) + cell(calories, 19) + label('CADENCE', 10) + cadence),
+    line(label('HR ZONE', 11) + cell(zone, 19) + label('RAGE', 10) + rage),
+    line(label('WALLS HIT', 11) + cell(String(s.walls), 19) + label('GEAR', 10) + gear),
+    line(),
+    line(paint(ORANGE, 'stravibe')),
+    '',
   ].join('\n') + '\n';
 }
 
-function main([sid, mode]) {
-  const dir = process.env.CLAUDE_PLUGIN_DATA;
+// The skill passes CLAUDE_PLUGIN_DATA; a bare `! stravibe-summarize` finds the freshest stravibe data dir.
+function dataDir() {
+  if (process.env.CLAUDE_PLUGIN_DATA) return process.env.CLAUDE_PLUGIN_DATA;
+  const root = path.join(os.homedir(), '.claude/plugins/data');
+  let best = null, bestMs = -1;
+  try {
+    for (const name of fs.readdirSync(root)) {
+      if (!name.startsWith('stravibe')) continue;
+      try { const m = fs.statSync(path.join(root, name, 'events.jsonl')).mtimeMs; if (m > bestMs) [best, bestMs] = [path.join(root, name), m]; } catch {}
+    }
+  } catch {}
+  return best;
+}
+
+function main(argv) {
+  const plainOut = argv.includes('--plain') || !!process.env.NO_COLOR;
+  const [sid, mode] = argv.filter((a) => a !== '--plain');
+  const dir = dataDir();
   const events = dir ? loadEvents(path.join(dir, 'events.jsonl')) : [];
   const picked = pickSession(events, sid, mode === 'last');
   if (!picked) return console.log('No activity recorded yet.');
   const t = timing(events, picked);
   // the current session's window stays open: commits made by hand after Claude's last turn still count
+  const live = picked === sid || !sid;
   const tr = readTranscripts(withSubagents(t.tps));
   const top = tr && Object.entries(tr.models).sort((a, b) => b[1] - a[1])[0];
-  process.stdout.write(render({ ...t, ...countCommits(t.cwds, t.startMs, picked === sid ? Date.now() : t.endMs), tokens: tr?.tokens ?? null, gear: top?.[0] ?? t.startModel }));
+  const stats = { ...t, ...countCommits(t.cwds, t.startMs, live ? Date.now() : t.endMs), tokens: tr?.tokens ?? null, gear: top?.[0] ?? t.startModel };
+  process.stdout.write(render(stats, { color: !plainOut }));
 }
 
-module.exports = { loadEvents, pickSession, timing, countCommits, render };
+module.exports = { loadEvents, pickSession, timing, countCommits, render, big };
 if (require.main === module) main(process.argv.slice(2));
