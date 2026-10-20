@@ -2,12 +2,20 @@
 // Summarizer: joins the hook log with git and the transcript, prints the text card.
 // Usage: stravibe-summarize <session_id> [last]
 const fs = require('fs');
+const { execFileSync } = require('child_process');
 
 const MIN = 60e3;
 const AUTO_PAUSE_MS = 5 * MIN;
 const INTERRUPT_CAP_MS = 5 * MIN;
 const END_EVENTS = new Set(['Stop', 'StopFailure', 'SessionEnd']);
 const RATE_LIMIT = /rate.?limit/i;
+const MIN_COMMIT_LINES = 5;
+const EXCLUDED_PATHS = [
+  /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|Cargo\.lock|poetry\.lock|go\.sum|Gemfile\.lock|composer\.lock)$/,
+  /\.min\.[^/]+$/,
+  /\.map$/,
+  /(^|\/)(dist|build)\//,
+];
 
 const ms = (e) => Date.parse(e.t);
 const isPrompt = (e) => e.ev === 'UserPromptSubmit';
@@ -74,4 +82,47 @@ function timing(events, sid) {
   return { startMs, endMs, movingMs, elapsedMs: endMs - startMs, typed, rageHits, walls, cwds: [...cwds], tps: [...tps], startModel };
 }
 
-module.exports = { loadEvents, pickSession, timing };
+const git = (cwd, args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 1 << 26 });
+
+// numstat shows renames as "src/{a.js => b.js}" or "a.js => b.js"; keep the new path.
+const renamedTo = (p) => p.replace(/\{[^{}]* => ([^{}]*)\}/g, '$1').replace(/^.* => /, '').replace(/\/\//g, '/');
+
+function countCommits(cwds, startMs, endMs) {
+  const total = { commits: 0, added: 0, removed: 0 };
+  const repos = new Set();
+  for (const cwd of cwds) {
+    try { repos.add(git(cwd, ['rev-parse', '--show-toplevel']).trim()); } catch {}
+  }
+  const seen = new Set();
+  for (const repo of repos) {
+    let email, out;
+    try {
+      email = git(repo, ['config', 'user.email']).trim().toLowerCase();
+      // committer date >= author date, so --since only trims the walk
+      out = git(repo, ['log', '--no-merges', '-w', '-M', '--numstat', `--since=${new Date(startMs).toISOString()}`, '--format=%x00%H%x09%at%x09%ae']);
+    } catch { continue; }
+    if (!email) continue;
+    for (const chunk of out.split('\0').slice(1)) {
+      const [head, ...rows] = chunk.split('\n');
+      const [hash, at, ae] = head.split('\t');
+      const t = Number(at) * 1000;
+      if (seen.has(hash) || t < startMs || t > endMs || ae.toLowerCase() !== email) continue;
+      seen.add(hash);
+      let added = 0, removed = 0;
+      for (const row of rows) {
+        const [a, r, ...rest] = row.split('\t');
+        if (!rest.length || a === '-') continue;
+        if (EXCLUDED_PATHS.some((re) => re.test(renamedTo(rest.join('\t'))))) continue;
+        added += Number(a);
+        removed += Number(r);
+      }
+      if (added + removed < MIN_COMMIT_LINES) continue;
+      total.commits++;
+      total.added += added;
+      total.removed += removed;
+    }
+  }
+  return total;
+}
+
+module.exports = { loadEvents, pickSession, timing, countCommits };
