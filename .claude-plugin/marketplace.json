@@ -1,0 +1,11 @@
+{
+  "name": "stravibe",
+  "owner": { "name": "phuuun" },
+  "plugins": [
+    {
+      "name": "stravibe",
+      "source": "./",
+      "description": "Strava for vibecoding: every Claude Code session becomes an activity."
+    }
+  ]
+}
