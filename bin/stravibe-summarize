@@ -2,7 +2,9 @@
 // Summarizer: joins the hook log with git and the transcript, prints the text card.
 // Usage: stravibe-summarize <session_id> [last]
 const fs = require('fs');
+const path = require('path');
 const { execFileSync } = require('child_process');
+const { readTranscripts, withSubagents } = require('../lib/transcript');
 
 const MIN = 60e3;
 const AUTO_PAUSE_MS = 5 * MIN;
@@ -16,6 +18,10 @@ const EXCLUDED_PATHS = [
   /\.map$/,
   /(^|\/)(dist|build)\//,
 ];
+const WARMUP_MIN_MOVING_MS = 10 * MIN;
+const ZONE_CUTOFFS = [2000, 5000, 10000, 20000]; // tokens per moving minute; guesses
+const RAGE_LEVELS = [[0.1, 'Chill'], [0.25, 'Warm'], [0.5, 'Spicy'], [Infinity, 'Meltdown']];
+const RULE = '─'.repeat(42);
 
 const ms = (e) => Date.parse(e.t);
 const isPrompt = (e) => e.ev === 'UserPromptSubmit';
@@ -125,4 +131,50 @@ function countCommits(cwds, startMs, endMs) {
   return total;
 }
 
-module.exports = { loadEvents, pickSession, timing, countCommits };
+const pad2 = (n) => String(n).padStart(2, '0');
+const hms = (t) => { const s = Math.round(t / 1000); return `${Math.floor(s / 3600)}:${pad2(Math.floor(s / 60) % 60)}:${pad2(s % 60)}`; };
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function render(s) {
+  const d = new Date(s.startMs);
+  const movingMin = s.movingMs / MIN;
+  let pace = 'Warm-up';
+  if (s.commits > 0 && s.movingMs >= WARMUP_MIN_MOVING_MS) {
+    const sec = Math.round(s.movingMs / s.commits / 1000);
+    pace = `${Math.floor(sec / 60)}:${pad2(sec % 60)} /commit`;
+  }
+  const calories = s.tokens == null ? '—' : s.tokens < 1000 ? `${s.tokens} tokens` : `${Math.round(s.tokens / 1000)}k tokens`;
+  const zone = s.tokens == null || !movingMin ? '—' : `Z${1 + ZONE_CUTOFFS.filter((c) => s.tokens / movingMin >= c).length}`;
+  const cadence = movingMin ? `${(s.typed / movingMin).toFixed(1)} /min` : '—';
+  const share = s.typed ? s.rageHits / s.typed : 0;
+  const rage = RAGE_LEVELS.find(([max]) => share < max)[1];
+  const row = (l1, v1, l2, v2) => `${l1.padEnd(12)}${String(v1).padEnd(15)}${l2.padEnd(10)}${v2}`;
+  return [
+    `STRAVIBE · ${DAYS[d.getDay()]} ${MONTHS[d.getMonth()]} ${d.getDate()}, ${pad2(d.getHours())}:${pad2(d.getMinutes())}`,
+    RULE,
+    `   ${String(s.commits).padEnd(13)}${pace.padEnd(18)}${hms(s.movingMs)}`,
+    `   ${'commits'.padEnd(13)}${'pace'.padEnd(18)}moving`,
+    '',
+    row('Elevation', `+${s.added} / −${s.removed}`, 'Elapsed', hms(s.elapsedMs)),
+    row('Calories', calories, 'Cadence', cadence),
+    row('HR zone', zone, 'Rage', rage),
+    row('Walls hit', s.walls, 'Gear', s.gear ?? '—'),
+    RULE,
+    'stravibe',
+  ].join('\n') + '\n';
+}
+
+function main([sid, mode]) {
+  const dir = process.env.CLAUDE_PLUGIN_DATA;
+  const events = dir ? loadEvents(path.join(dir, 'events.jsonl')) : [];
+  const picked = pickSession(events, sid, mode === 'last');
+  if (!picked) return console.log('No activity recorded yet.');
+  const t = timing(events, picked);
+  const tr = readTranscripts(withSubagents(t.tps));
+  const top = tr && Object.entries(tr.models).sort((a, b) => b[1] - a[1])[0];
+  process.stdout.write(render({ ...t, ...countCommits(t.cwds, t.startMs, t.endMs), tokens: tr?.tokens ?? null, gear: top?.[0] ?? t.startModel }));
+}
+
+module.exports = { loadEvents, pickSession, timing, countCommits, render };
+if (require.main === module) main(process.argv.slice(2));
