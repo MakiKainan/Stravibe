@@ -22,6 +22,8 @@ const EXCLUDED_PATHS = [
 const WARMUP_MIN_MOVING_MS = 10 * MIN;
 const ZONE_CUTOFFS = [2000, 5000, 10000, 20000]; // tokens per moving minute; guesses
 const RAGE_LEVELS = [[0.1, 'Chill'], [0.25, 'Warm'], [0.5, 'Spicy'], [Infinity, 'Meltdown']];
+// minutes per commit -> mascot speed lines; 0 = asleep. guesses
+const PACE_LEVELS = [[10, 3], [20, 2], [45, 1], [Infinity, 0]];
 
 const ms = (e) => Date.parse(e.t);
 const isPrompt = (e) => e.ev === 'UserPromptSubmit';
@@ -144,6 +146,15 @@ const GLYPHS = {
   '4': ['█ █', '▀▀█', '  ▀'], '5': ['█▀▀', '▀▀█', '▀▀▀'], '6': ['█▀▀', '█▀█', '▀▀▀'], '7': ['▀▀█', '  █', '  ▀'],
   '8': ['█▀█', '█▀█', '▀▀▀'], '9': ['█▀█', '▀▀█', '▀▀▀'], ':': [' ', '▀', '▀'], '-': ['   ', '▀▀▀', '   '],
 };
+// Claude Code's welcome mascot; row 0 is left empty so the feet line up with COMMITS.
+// Speed lines trail behind it once there is a real pace; during warm-up it stands still.
+// Too slow and it falls asleep: solid face, eyes shut as thin slits (▇ leaves a one-eighth gap on top), z's drifting up
+const MASCOT = ['', ' ▐▛███▜▌', '▝▜█████▛▘', '  ▘▘ ▝▝'];
+const MASCOT_ASLEEP = ['', ' ▐█████▌', '▝▜▇███▇▛▘', '  ▘▘ ▝▝'];
+const SNORE = ['  z Z', ' z', '', ''];
+const SPEED_LINES = { 1: ['', '', '  ══', ''], 2: ['', '   ═', '  ══', '   ═'], 3: ['', ' ═══', '════', ' ═══'] };
+const SPEED_W = 5;
+const MASCOT_W = SPEED_W + Math.max(...MASCOT.map((r) => r.length));
 const big = (str) => [0, 1, 2].map((r) => [...str].map((c) => GLYPHS[c][r]).join(' '));
 const meter = (n, of) => '▰'.repeat(n) + '▱'.repeat(of - n);
 
@@ -170,16 +181,32 @@ function render(s, { color = false } = {}) {
   const line = (text = '') => `  ${bar}  ${text}`.trimEnd();
   const label = (t, w) => paint(GRAY, t.padEnd(w));
   // pad by visible width: values may contain color codes
-  const cell = (t, w) => t + ' '.repeat(Math.max(1, w - t.replace(/\x1b\[[0-9;]*m/g, '').length));
+  const visible = (t) => t.replace(/\x1b\[[0-9;]*m/g, '').length;
+  const cell = (t, w) => t + ' '.repeat(Math.max(1, w - visible(t)));
   const paceRows = big(pace), commitRows = big(String(s.commits));
   const heroW = Math.max(22, paceRows[0].length + 3);
+  const brand = 'S T R A V I B E' + ' '.repeat(18);
+  const when = `${DAYS[d.getDay()]} ${MONTHS[d.getMonth()]} ${d.getDate()} · ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  // mascot sits right of the commit digits, its right edge under the date
+  const mascotAt = brand.length + when.length - MASCOT_W;
+  const level = warmup ? null : PACE_LEVELS.find(([max]) => s.movingMs / s.commits / MIN <= max)[1];
+  const body = level === 0 ? MASCOT_ASLEEP : MASCOT;
+  const ink = (code, t) => (t ? paint(code, t) : '');
+  const art = (i) => {
+    const lines = level ? SPEED_LINES[level][i] : '';
+    const snore = level === 0 ? SNORE[i] : '';
+    if (!body[i] && !snore) return '';
+    const b = snore ? body[i].padEnd(MASCOT_W - SPEED_W) : body[i];
+    return ink(GRAY, lines.padEnd(SPEED_W)) + ink(ORANGE, b) + ink(GRAY, snore);
+  };
+  const beside = (t, i) => (art(i) ? t + ' '.repeat(Math.max(2, mascotAt - visible(t))) + art(i) : t);
   return [
     '',
-    line(`${paint(ORANGE + BOLD, 'S T R A V I B E')}                  ${DAYS[d.getDay()]} ${MONTHS[d.getMonth()]} ${d.getDate()} · ${pad2(d.getHours())}:${pad2(d.getMinutes())}`),
+    line(`${paint(ORANGE + BOLD, brand.trimEnd())}${' '.repeat(18)}${when}`),
     line(paint(BOLD, TITLES.find(([h]) => d.getHours() < h)[1])),
     line(),
-    ...paceRows.map((r, i) => line(paint(ORANGE, r.padEnd(heroW) + commitRows[i]))),
-    line(label(warmup ? 'WARM-UP' : 'PACE /commit', heroW) + paint(GRAY, 'COMMITS')),
+    ...paceRows.map((r, i) => line(beside(paint(ORANGE, r.padEnd(heroW) + commitRows[i]), i))),
+    line(beside(label(warmup ? 'WARM-UP' : 'PACE /commit', heroW) + paint(GRAY, 'COMMITS'), 3)),
     line(),
     line(`${hms(s.movingMs)} moving   ·   ${hms(s.elapsedMs)} elapsed   ·   +${s.added} −${s.removed}`),
     line(paint(GRAY, '─'.repeat(50))),

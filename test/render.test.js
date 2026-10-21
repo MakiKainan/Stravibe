@@ -128,3 +128,26 @@ test('NO_COLOR turns color off', () => {
   assert.match(r.stdout, /S T R A V I B E/);
   assert.ok(!r.stdout.includes('\x1b'));
 });
+
+test('mascot beside the commits: more speed lines the faster the pace', () => {
+  const card = (s) => plain(s).split('\n');
+  const rows = card({ ...base, commits: 12 }); // 5 min/commit
+  const at = rows.findIndex((r) => r.endsWith(' ═══  ▐▛███▜▌'));
+  assert.ok(at > 0 && rows[at].includes(big('12')[1]));
+  assert.ok(rows[at + 1].endsWith('════ ▝▜█████▛▘'));
+  assert.equal(rows[at + 1].length, rows[1].length); // right edge under the date
+  assert.ok(rows[at + 2].includes('COMMITS') && rows[at + 2].endsWith(' ═══   ▘▘ ▝▝'));
+  assert.ok(card({ ...base, commits: 4 }).some((r) => r.endsWith('   ═  ▐▛███▜▌'))); // 15 min
+  assert.ok(card({ ...base, commits: 2 }).some((r) => r.endsWith('  ══ ▝▜█████▛▘'))); // 30 min
+  const still = card({ ...base, commits: 0 });
+  assert.ok(still.some((r) => r.endsWith('     ▝▜█████▛▘')));
+  assert.ok(!/[═z]/.test(still.join('\n')));
+});
+
+test('mascot falls asleep when the pace is too slow', () => {
+  const out = plain({ ...base, commits: 1 }); // 60 min/commit
+  assert.match(out, /▐█████▌  z\n/);
+  assert.match(out, /▝▜▇███▇▛▘/);
+  assert.match(out, /z Z\n/);
+  assert.doesNotMatch(out, /[═▛]███/);
+});
