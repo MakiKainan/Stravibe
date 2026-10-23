@@ -15,6 +15,11 @@ A Claude Code plugin ("Strava for vibecoding"). Hooks record every session as an
 - `skills/activity/SKILL.md`: `/stravibe:activity`. Runs the summarizer with `--plain`, because Claude's code block can't show color.
 - `hooks/hooks.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` (local marketplace, source `./`)
 - Tests: `node --test` (Node ≥ 18, no dependencies)
+- `mod/`: the second plugin, `stravibe-live` (marketplace source `./mod`). A Claude Code function-hooks mod: `/stravibe` opens a live pane in the desktop app and VS Code, with animated SVG cards, a randomly generated usage road (5-hour track / weekly marathon) and a mascot that plays a move when tapped. The terminal gets a text version with sparklines.
+  - `mod/hooks/register.tsx`: recording and the pane layout. `charts.ts`: the SVG cards and mascot sprites. `track.ts`: the road generator. `stats.ts`: the numbers.
+  - It also hides `/stravibe:activity` in the app, since the pane covers it. The CLI keeps it.
+  - Tests: `claude plugin test mod`. Check: `claude plugin validate mod`.
+  - `mod/.claude-plugin/types/` is written by the engine and git-ignored. Don't commit it.
 
 ## Rules
 
@@ -22,6 +27,8 @@ A Claude Code plugin ("Strava for vibecoding"). Hooks record every session as an
 - The recorder never writes to stdout and always exits 0. No git, network or transcript work inside hooks.
 - Never store prompt text, file contents, diffs, command text, Claude's replies or `compact_summary`.
 - Thresholds, cutoffs and keyword lists are named constants at the top of their file.
+- The zone cutoffs, rage levels, pace levels, auto-pause and commit rules exist in both `bin/stravibe-summarize` and `mod/hooks/stats.ts` (zone cutoffs also in `mod/hooks/charts.ts`). Change them in every place, so the card and the pane agree.
+- The mod stores numbers only, like the recorder. Its `$.store` holds per-session moving time, nothing else.
 
 ## Progress (2026-10-20)
 

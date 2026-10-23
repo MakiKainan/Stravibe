@@ -6,6 +6,11 @@
       "name": "stravibe",
       "source": "./",
       "description": "Strava for vibecoding: every Claude Code session becomes an activity."
+    },
+    {
+      "name": "stravibe-live",
+      "source": "./mod",
+      "description": "Strava for vibecoding, live: an animated activity pane beside the chat (desktop app and VS Code)."
     }
   ]
 }
