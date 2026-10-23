@@ -168,7 +168,7 @@ function render(s, { color = false } = {}) {
     const sec = Math.round(s.movingMs / s.commits / 1000);
     pace = `${Math.floor(sec / 60)}:${pad2(sec % 60)}`;
   }
-  const calories = s.tokens == null ? '—' : s.tokens < 1000 ? `${s.tokens} tokens` : `${Math.round(s.tokens / 1000)}k tokens`;
+  const calories = s.tokens == null ? '—' : s.tokens < 1000 ? `${s.tokens} tokens` : s.tokens < 1e6 ? `${Math.round(s.tokens / 1000)}k tokens` : `${(s.tokens / 1e6).toFixed(1)}M tokens`;
   const zoneN = 1 + ZONE_CUTOFFS.filter((c) => s.tokens / movingMin >= c).length;
   const zone = s.tokens == null || !movingMin ? '—' : `${paint(ORANGE, meter(zoneN, 5))} Z${zoneN}`;
   const cadence = movingMin ? `${(s.typed / movingMin).toFixed(1)} /min` : '—';

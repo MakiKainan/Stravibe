@@ -1,6 +1,28 @@
+<p align="center"><img src=".claude-plugin/icon.png" width="128" alt="Stravibe logo"></p>
+
 # Stravibe
 
 Strava for vibecoding. Every Claude Code session becomes an activity: moving time, commits, pace, a "heart rate" and a usage road. The hero stat is **pace in minutes per commit**.
+
+```
+  ┃  S T R A V I B E                  Thu Oct 22 · 18:57
+  ┃  Evening Flow
+  ┃
+  ┃  ▀▀█   ▀▀█ █ █         ▀▀█ █▀█
+  ┃   ▀█ ▀  ▀█ ▀▀█         █▀▀ ▀▀█         ═══  ▐▛███▜▌
+  ┃  ▀▀▀ ▀ ▀▀▀   ▀         ▀▀▀ ▀▀▀        ════ ▝▜█████▛▘
+  ┃  PACE /commit          COMMITS         ═══   ▘▘ ▝▝
+  ┃
+  ┃  1:43:34 moving   ·   2:28:48 elapsed   ·   +3994 −1373
+  ┃  ──────────────────────────────────────────────────
+  ┃  CALORIES   2.3M tokens        CADENCE   0.4 /min
+  ┃  HR ZONE    ▰▰▰▰▰ Z5           RAGE      ▰▰▱▱ WARM
+  ┃  WALLS HIT  0                  GEAR      opus-5-5
+  ┃
+  ┃  stravibe
+```
+
+<sub>A real session: 29 commits in 1:43 of moving time, a 3:34 pace.</sub>
 
 ## Install
 
@@ -133,3 +155,7 @@ claude plugin test mod
 ```
 
 The zone cutoffs, rage levels, pace levels and commit rules exist in both `bin/stravibe-summarize` and `mod/hooks/stats.ts`. Change them in both places.
+
+## License
+
+MIT

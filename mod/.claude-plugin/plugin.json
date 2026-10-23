@@ -2,5 +2,17 @@
   "name": "stravibe-live",
   "version": "0.1.0",
   "description": "Strava for vibecoding, live: an animated activity pane beside the chat.",
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "MakiKainan"
+  },
+  "homepage": "https://github.com/MakiKainan/Stravibe",
+  "repository": "https://github.com/MakiKainan/Stravibe",
+  "license": "MIT",
+  "keywords": [
+    "strava",
+    "activity",
+    "stats",
+    "vibecoding"
+  ]
 }

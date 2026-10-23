@@ -1,1 +1,17 @@
-{"name":"stravibe","version":"0.1.0","description":"Strava for vibecoding: every Claude Code session becomes an activity."}
+{
+  "name": "stravibe",
+  "version": "0.1.0",
+  "description": "Strava for vibecoding: every Claude Code session becomes an activity.",
+  "author": {
+    "name": "MakiKainan"
+  },
+  "homepage": "https://github.com/MakiKainan/Stravibe",
+  "repository": "https://github.com/MakiKainan/Stravibe",
+  "license": "MIT",
+  "keywords": [
+    "strava",
+    "activity",
+    "stats",
+    "vibecoding"
+  ]
+}

@@ -86,7 +86,7 @@ export const mss = (t: number) => {
   const s = Math.round(t / 1000)
   return `${Math.floor(s / 60)}:${pad2(s % 60)}`
 }
-export const kTokens = (n: number) => (n < 1000 ? `${n}` : `${Math.round(n / 1000)}k`)
+export const kTokens = (n: number) => (n < 1000 ? `${n}` : n < 1e6 ? `${Math.round(n / 1000)}k` : `${(n / 1e6).toFixed(1)}M`)
 export const dayKey = (ms: number) => {
   const d = new Date(ms)
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`

@@ -1,6 +1,11 @@
 {
   "name": "stravibe",
-  "owner": { "name": "phuuun" },
+  "owner": {
+    "name": "phuuun"
+  },
+  "metadata": {
+    "description": "Strava for vibecoding: a recorder with a text card, and a live activity pane."
+  },
   "plugins": [
     {
       "name": "stravibe",

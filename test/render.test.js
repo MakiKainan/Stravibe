@@ -35,6 +35,7 @@ test('secondary stats', () => {
   assert.match(out, /\+842 −120/);
   assert.match(out, /1:30:00 elapsed/);
   assert.match(out, /CALORIES\s+184k tokens/);
+  assert.match(plain({ ...base, tokens: 2252000 }), /CALORIES\s+2\.3M tokens/);
   assert.match(out, /CADENCE\s+0\.3 \/min/);
   assert.match(out, /HR ZONE\s+▰▰▱▱▱ Z2/); // 3067 tokens/min
   assert.match(out, /WALLS HIT\s+1/);
