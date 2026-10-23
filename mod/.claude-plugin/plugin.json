@@ -1,0 +1,6 @@
+{
+  "name": "stravibe-live",
+  "version": "0.1.0",
+  "description": "Strava for vibecoding, live: an animated activity pane beside the chat.",
+  "types": "./types/index.d.ts"
+}
